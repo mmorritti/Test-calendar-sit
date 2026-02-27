@@ -1,0 +1,76 @@
+﻿html {
+  font-size: 14px;
+}
+
+@media (min-width: 768px) {
+  html {
+    font-size: 16px;
+  }
+}
+
+.btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
+  box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb;
+}
+
+html {
+  position: relative;
+  min-height: 100%;
+}
+
+body {
+  margin-bottom: 60px;
+}
+
+.form-floating > .form-control-plaintext::placeholder, .form-floating > .form-control::placeholder {
+  color: var(--bs-secondary-color);
+  text-align: end;
+}
+
+.form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
+  text-align: start;
+}
+
+/* ── FULLCALENDAR RESPONSIVE ── */
+
+/* Su mobile nascondi il bottone "Anno" che occupa troppo spazio */
+@media (max-width: 576px) {
+
+    /* Rimpicciolisci i bottoni della toolbar */
+    .fc-button {
+        padding: 4px 8px !important;
+        font-size: 0.75rem !important;
+    }
+
+    /* Nascondi la vista Anno su schermi piccoli */
+    .fc-multiMonthYear-button {
+        display: none !important;
+    }
+
+    /* Il titolo del mese più piccolo */
+    .fc-toolbar-title {
+        font-size: 1rem !important;
+    }
+
+    /* Toolbar su due righe invece che una */
+    .fc-toolbar {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    /* Testo degli eventi più piccolo */
+    .fc-event-title {
+        font-size: 0.7rem !important;
+    }
+}
+
+/* Tablet */
+@media (max-width: 768px) {
+    .fc-toolbar-title {
+        font-size: 1.1rem !important;
+    }
+
+    .fc-button {
+        padding: 5px 10px !important;
+        font-size: 0.8rem !important;
+    }
+}
