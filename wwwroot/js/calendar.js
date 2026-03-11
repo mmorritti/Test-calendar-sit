@@ -27,35 +27,25 @@ function showDetailModal(event) {
     currentDetailEvent = event;
 
     document.getElementById('detail-title').textContent = event.title;
+
+    // Mostra data
     document.getElementById('detail-date').textContent = '📅 ' + formatDate(event.start)
         + (event.end ? ' → ' + formatDate(event.end) : '');
+
+    // Mostra il Luogo
+    const luogo = event.extendedProps.location;
+    const locationEl = document.getElementById('detail-location');
+    if (locationEl) {
+        locationEl.innerHTML = luogo ? '📍 ' + luogo : '';
+    }
+
     document.getElementById('detail-desc').textContent = event.extendedProps.description || '(nessuna descrizione)';
 
     new bootstrap.Modal(document.getElementById('detailModal')).show();
 }
 
 // ─────────────────────────────────────────
-// MODIFICA DA DETTAGLIO
-// ─────────────────────────────────────────
-function editFromDetail() {
-    bootstrap.Modal.getInstance(document.getElementById('detailModal')).hide();
-
-    const event = currentDetailEvent;
-    editingEventId = event.id;
-
-    document.getElementById('modalTitle').textContent = '✏️ Modifica Evento';
-    document.getElementById('f-title').value = event.title;
-    document.getElementById('f-start').value = toLocalInput(event.start);
-    document.getElementById('f-end').value = event.end ? toLocalInput(event.end) : '';
-    document.getElementById('f-color').value = event.backgroundColor || '#3788d8';
-    document.getElementById('f-description').value = event.extendedProps.description || '';
-    document.getElementById('btnDelete').style.display = 'inline-block';
-
-    new bootstrap.Modal(document.getElementById('formModal')).show();
-}
-
-// ─────────────────────────────────────────
-// SALVA (crea o aggiorna)
+// SALVA (crea nuovo evento)
 // ─────────────────────────────────────────
 async function saveEvent() {
     const title = document.getElementById('f-title').value.trim();
@@ -106,26 +96,7 @@ async function deleteEvent() {
 }
 
 // ─────────────────────────────────────────
-// DRAG & DROP
-// ─────────────────────────────────────────
-async function updateEventDates(event) {
-    await fetch(`/api/events/${event.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            id: parseInt(event.id),
-            title: event.title,
-            start: event.start.toISOString(),
-            end: event.end ? event.end.toISOString() : null,
-            color: event.backgroundColor,
-            description: event.extendedProps.description,
-            allDay: event.allDay
-        })
-    });
-}
-
-// ─────────────────────────────────────────
-// RICERCA EVENTI
+// RICERCA EVENTI (Aggiornata con Regione)
 // ─────────────────────────────────────────
 function searchEvents(query) {
     const q = query.toLowerCase().trim();
@@ -133,8 +104,9 @@ function searchEvents(query) {
     const filtered = q === ''
         ? allEvents
         : allEvents.filter(e =>
-            e.title.toLowerCase().includes(q) ||
-            (e.description && e.description.toLowerCase().includes(q))
+            (e.title && e.title.toLowerCase().includes(q)) ||
+            (e.description && e.description.toLowerCase().includes(q)) ||
+            (e.regione && e.regione.toLowerCase().includes(q)) 
         );
 
     calendar.removeAllEvents();
@@ -187,9 +159,24 @@ document.addEventListener('DOMContentLoaded', function () {
         },
 
         selectable: true,
-        editable: true,
+        editable: false, // <-- IMPORTANTE: Disabilita il drag & drop (Sola lettura)
         selectMinDistance: 10,
         longPressDelay: 500,
+
+        // NUOVO: Stampa il luogo nel blocchetto colorato dell'evento
+        eventContent: function (arg) {
+            let divEl = document.createElement('div');
+            divEl.style.padding = '2px 4px';
+            divEl.style.overflow = 'hidden';
+
+            let titleHtml = `<b>${arg.event.title}</b>`;
+            let locationHtml = arg.event.extendedProps.location
+                ? `<br><small style="opacity: 0.9">📍 ${arg.event.extendedProps.location}</small>`
+                : '';
+
+            divEl.innerHTML = titleHtml + locationHtml;
+            return { domNodes: [divEl] };
+        },
 
         events: function (info, successCallback, failureCallback) {
             fetch(`/api/events?start=${info.startStr}&end=${info.endStr}`)
@@ -209,9 +196,7 @@ document.addEventListener('DOMContentLoaded', function () {
             calendar.unselect();
         },
 
-        eventClick: function (info) { showDetailModal(info.event); },
-        eventDrop: function (info) { updateEventDates(info.event); },
-        eventResize: function (info) { updateEventDates(info.event); }
+        eventClick: function (info) { showDetailModal(info.event); }
     });
 
     calendar.render();
