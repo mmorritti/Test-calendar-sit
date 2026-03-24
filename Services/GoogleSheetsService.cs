@@ -3,7 +3,6 @@ using System.Globalization;
 
 namespace CalendarDemo.Services;
 
-// Creiamo un record per mappare la struttura specifica di ogni foglio
 public record SheetConfig(string Gid, string Regione, int ColMese, int ColGiorno, int ColTipologia, int ColDescrizione, int ColLuogo);
 
 public class GoogleSheetsService
@@ -17,10 +16,6 @@ public class GoogleSheetsService
         _sheetId = "1XOgZtvlO7GTkTSIXtB5mlDw9lslzwWF_rByQVWuIXOM";
     }
 
-    // Ora definiamo esattamente DOVE si trovano i dati per ogni foglio.
-    // ATTENZIONE: Controlla il CSV della Lombardia e aggiorna questi indici (partono da 0)!
-    // Quelli sotto sono un esempio in cui ipotizziamo che la Lombardia abbia le info spostate di 1 colonna.
-    // Gid, Regione, ColMese, ColGiorno, ColTipologia, ColDescrizione, ColLuogo
     private static readonly List<SheetConfig> Sheets = new()
     {
         new SheetConfig("0",          "LOMBARDIA",             0, 1, 4, 6, 7),
@@ -56,6 +51,20 @@ public class GoogleSheetsService
             {
                 var url = $"https://docs.google.com/spreadsheets/d/{_sheetId}/export?format=csv&gid={config.Gid}";
                 var csv = await _http.GetStringAsync(url);
+
+                // --- INIZIO TEST GREZZO LOMBARDIA ---
+                if (config.Regione == "LOMBARDIA")
+                {
+                    Console.WriteLine("\n=== INIZIO LETTURA REALE LOMBARDIA ===");
+                    var rawLines = csv.Split('\n').Take(6).ToArray(); // Prende le prime 6 righe
+                    for (int i = 0; i < rawLines.Length; i++)
+                    {
+                        Console.WriteLine($"RIGA {i}: {rawLines[i].Trim()}");
+                    }
+                    Console.WriteLine("=== FINE LETTURA REALE LOMBARDIA ===\n");
+                }
+                // --- FINE TEST ---
+
                 var events = ParseSheet(csv, config, ref id);
                 allEvents.AddRange(events);
             }
@@ -79,57 +88,59 @@ public class GoogleSheetsService
         for (int i = 3; i < lines.Length; i++)
         {
             var cols = ParseCsvLine(lines[i]);
-
-            // Per evitare errori IndexOutOfRange, ci assicuriamo che la riga abbia abbastanza colonne 
-            // per arrivare almeno alla colonna del Giorno
             if (cols.Count <= config.ColGiorno) continue;
 
-            // --- LETTURA DATI BASATA SULLA CONFIGURAZIONE DINAMICA ---
-
-            // Colonna MESE (Mantiene il mese corrente se la cella è vuota/unita in basso)
+            // --- LETTURA MESE E GIORNO ---
             var meseRaw = cols.Count > config.ColMese ? cols[config.ColMese].Trim() : "";
             if (!string.IsNullOrWhiteSpace(meseRaw))
                 currentMese = meseRaw.ToUpper().Length >= 3 ? meseRaw.ToUpper().Substring(0, 3) : meseRaw.ToUpper();
 
-            // Colonna GIORNO
-            var giornoRaw = cols[config.ColGiorno].Trim();
+            var giornoRaw = cols[config.ColGiorno].Trim(' ', '"');
 
-            // Evitiamo le righe senza dati
             if (string.IsNullOrWhiteSpace(giornoRaw) || string.IsNullOrWhiteSpace(currentMese))
                 continue;
 
-            // --- GESTIONE DATE (Ibrida per Lombardia e altre regioni) ---
-            DateTime data;
+            // --- GESTIONE DATE: ESTRAZIONE NUMERO ---
+            DateTime data = DateTime.MinValue;
 
-            // 1. Proviamo a vedere se la cella contiene già una data completa (Es: Lombardia "2026-01-15")
-            if (DateTime.TryParse(giornoRaw, out DateTime parsedDate))
+            // Questo trucco magico estrae SOLO I NUMERI dalla scritta (es: da "giovedì 15" tira fuori "15")
+            var matchNumero = System.Text.RegularExpressions.Regex.Match(giornoRaw, @"\d+");
+
+            // 1. Caso principale: siamo riusciti a estrarre un numero di giorno
+            if (matchNumero.Success && int.TryParse(matchNumero.Value, out int giorno) && Mesi.TryGetValue(currentMese, out int mese))
+            {
+                // Se per caso Google Sheets dovesse sparare un giorno seriale strano (tipo 45672)
+                if (giorno > 30000)
+                {
+                    data = DateTime.FromOADate(giorno);
+                }
+                else
+                {
+                    data = new DateTime(2026, mese, giorno);
+                }
+            }
+            // 2. Piano B: forse è già una data intera (es "2026-01-15")
+            else if (DateTime.TryParse(giornoRaw, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime parsedDate))
             {
                 data = parsedDate;
             }
-            // 2. Altrimenti, proviamo a leggerlo come numero (Es: Altre Regioni "15")
-            else if (int.TryParse(giornoRaw, out int giorno) && Mesi.TryGetValue(currentMese, out int mese))
-            {
-                data = new DateTime(2026, mese, giorno);
-            }
-            // 3. Se non è né una data né un numero (es. intestazioni o celle sporche), saltiamo
             else
             {
+                // Riga incomprensibile, saltiamo
                 continue;
             }
 
-            // Tipologia, Descrizione e Luogo presi dai loro indici specifici, verificando che la colonna esista
+            // --- LETTURA ALTRE COLONNE ---
             var tipologiaRaw = cols.Count > config.ColTipologia ? cols[config.ColTipologia].Trim() : "";
             var descrizione = cols.Count > config.ColDescrizione ? cols[config.ColDescrizione].Trim() : "";
             var luogo = cols.Count > config.ColLuogo ? cols[config.ColLuogo].Trim() : "";
 
-            // Filtro di sicurezza: ignoriamo esplicitamente le checkbox se capitano per sbaglio in Descrizione
             if (descrizione.Equals("TRUE", StringComparison.OrdinalIgnoreCase) ||
                 descrizione.Equals("FALSE", StringComparison.OrdinalIgnoreCase))
             {
-                descrizione = ""; // Svuotiamo, così sotto userà il nome della tipologia come Titolo
+                descrizione = "";
             }
 
-            // Estrazione dati per l'evento
             var codiceTipologia = tipologiaRaw.Length > 0 ? tipologiaRaw.Substring(0, 1).ToUpper() : "A";
             var colore = ColoriTipologia.TryGetValue(codiceTipologia, out var c) ? c : "#A0A0A0";
 
@@ -137,7 +148,6 @@ public class GoogleSheetsService
                 ? tipologiaRaw.Substring(tipologiaRaw.IndexOf('-') + 1).Trim()
                 : tipologiaRaw;
 
-            // Creazione e aggiunta dell'evento
             events.Add(new CalendarEvent
             {
                 Id = id++,
