@@ -2,6 +2,7 @@
 let editingEventId = null;
 let currentDetailEvent = null;
 let allEvents = [];
+let isDataLoaded = false; // <-- NUOVO: Evita di scaricare i dati 100 volte dal server!
 
 // ─────────────────────────────────────────
 // APRI MODAL CREAZIONE
@@ -28,11 +29,9 @@ function showDetailModal(event) {
 
     document.getElementById('detail-title').textContent = event.title;
 
-    // Mostra data
     document.getElementById('detail-date').textContent = '📅 ' + formatDate(event.start)
         + (event.end ? ' → ' + formatDate(event.end) : '');
 
-    // Mostra il Luogo
     const luogo = event.extendedProps.location;
     const locationEl = document.getElementById('detail-location');
     if (locationEl) {
@@ -79,6 +78,7 @@ async function saveEvent() {
         });
     }
 
+    isDataLoaded = false; // Costringe a riscaricare i dati dal server per vedere la modifica
     calendar.refetchEvents();
     bootstrap.Modal.getInstance(document.getElementById('formModal')).hide();
 }
@@ -91,32 +91,104 @@ async function deleteEvent() {
 
     await fetch(`/api/events/${editingEventId}`, { method: 'DELETE' });
 
+    isDataLoaded = false; // Costringe a riscaricare i dati
     calendar.refetchEvents();
     bootstrap.Modal.getInstance(document.getElementById('formModal')).hide();
 }
 
 // ─────────────────────────────────────────
-// RICERCA EVENTI (Aggiornata con Regione)
+// FILTRI AVANZATI (Testo + Tags Regioni)
 // ─────────────────────────────────────────
-function searchEvents(query) {
-    const q = query.toLowerCase().trim();
 
-    const filtered = q === ''
-        ? allEvents
-        : allEvents.filter(e =>
-            (e.title && e.title.toLowerCase().includes(q)) ||
-            (e.description && e.description.toLowerCase().includes(q)) ||
-            (e.regione && e.regione.toLowerCase().includes(q)) 
-        );
+let isRegionFilterPopulated = false;
+let activeRegionTags = [];
 
-    calendar.removeAllEvents();
-    calendar.addEventSource(filtered);
+function populateRegionFilter() {
+    if (isRegionFilterPopulated) return;
+
+    const list = document.getElementById('region-dropdown-list');
+    if (!list) return;
+
+    list.innerHTML = '';
+
+    const regioniUniche = [...new Set(allEvents.map(e => e.regione).filter(r => r))].sort();
+
+    regioniUniche.forEach(regione => {
+        const safeId = regione.replace(/\s+/g, '-');
+        const li = document.createElement('li');
+        li.innerHTML = `<button class="dropdown-item" id="menu-btn-${safeId}" type="button" onclick="addRegionTag('${regione}')">${regione}</button>`;
+        list.appendChild(li);
+    });
+
+    isRegionFilterPopulated = true;
 }
 
-function clearSearch() {
+function addRegionTag(regione) {
+    if (!activeRegionTags.includes(regione)) {
+        activeRegionTags.push(regione);
+        renderRegionTags();
+        applyFilters();
+    }
+}
+
+function removeRegionTag(regione) {
+    activeRegionTags = activeRegionTags.filter(r => r !== regione);
+    renderRegionTags();
+    applyFilters();
+}
+
+function renderRegionTags() {
+    const container = document.getElementById('region-tags');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const allMenuBtns = document.querySelectorAll('#region-dropdown-list .dropdown-item');
+    allMenuBtns.forEach(btn => btn.classList.remove('disabled'));
+
+    activeRegionTags.forEach(regione => {
+        const safeId = regione.replace(/\s+/g, '-');
+        const menuBtn = document.getElementById(`menu-btn-${safeId}`);
+        if (menuBtn) {
+            menuBtn.classList.add('disabled');
+        }
+
+        const tag = document.createElement('span');
+        tag.className = 'badge bg-secondary d-flex align-items-center gap-2 px-3 py-2 fw-normal rounded-pill shadow-sm';
+        tag.style.fontSize = '0.85rem';
+        tag.innerHTML = `
+            ${regione} 
+            <span style="cursor: pointer; font-weight: bold; opacity: 0.7;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.7" onclick="removeRegionTag('${regione}')">✕</span>
+        `;
+        container.appendChild(tag);
+    });
+}
+
+// NUOVO METODO DI FILTRAGGIO (Molto più pulito, previene i duplicati)
+function filterLocalEvents() {
+    const query = document.getElementById('search-input').value.toLowerCase().trim();
+
+    return allEvents.filter(e => {
+        const matchTesto = query === '' ||
+            (e.title && e.title.toLowerCase().includes(query)) ||
+            (e.description && e.description.toLowerCase().includes(query));
+
+        const matchRegione = activeRegionTags.length === 0 || activeRegionTags.includes(e.regione);
+
+        return matchTesto && matchRegione;
+    });
+}
+
+function applyFilters() {
+    // Ora invece di sovrapporre dati, diciamo solo al calendario di "ricaricarsi"
+    // Il calendario richiamerà la funzione "events:" qui sotto, che applicherà il filtro.
+    calendar.refetchEvents();
+}
+
+function clearFilters() {
     document.getElementById('search-input').value = '';
-    calendar.removeAllEvents();
-    calendar.addEventSource(allEvents);
+    activeRegionTags = [];
+    renderRegionTags();
+    applyFilters();
 }
 
 // ─────────────────────────────────────────
@@ -129,20 +201,15 @@ function formatDate(date) {
     });
 }
 
-function toLocalInput(date) {
-    const d = new Date(date);
-    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-    return d.toISOString().substring(0, 16);
-}
-
 // ─────────────────────────────────────────
-// INIZIALIZZAZIONE CALENDARIO (per ultimo!)
+// INIZIALIZZAZIONE CALENDARIO
 // ─────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function () {
 
     calendar = new FullCalendar.Calendar(document.getElementById('calendar'), {
         locale: 'it',
-        height: 'auto',
+        height: 'calc(100vh - 250px)',
+        dayMaxEvents: 2,
 
         headerToolbar: {
             left: 'prev,next today',
@@ -159,19 +226,23 @@ document.addEventListener('DOMContentLoaded', function () {
         },
 
         selectable: true,
-        editable: false, // <-- IMPORTANTE: Disabilita il drag & drop (Sola lettura)
+        editable: false,
         selectMinDistance: 10,
         longPressDelay: 500,
 
-        // NUOVO: Stampa il luogo nel blocchetto colorato dell'evento
         eventContent: function (arg) {
             let divEl = document.createElement('div');
-            divEl.style.padding = '2px 4px';
+            divEl.style.padding = '1px 3px';
             divEl.style.overflow = 'hidden';
+            divEl.style.fontSize = '0.75rem';
+            divEl.style.lineHeight = '1.1';
 
-            let titleHtml = `<b>${arg.event.title}</b>`;
+            let titleStyle = 'font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;';
+            let titleHtml = `<div style="${titleStyle}">${arg.event.title}</div>`;
+
+            let locStyle = 'opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px;';
             let locationHtml = arg.event.extendedProps.location
-                ? `<br><small style="opacity: 0.9">📍 ${arg.event.extendedProps.location}</small>`
+                ? `<div style="${locStyle}">📍 ${arg.event.extendedProps.location}</div>`
                 : '';
 
             divEl.innerHTML = titleHtml + locationHtml;
@@ -179,13 +250,23 @@ document.addEventListener('DOMContentLoaded', function () {
         },
 
         events: function (info, successCallback, failureCallback) {
-            fetch(`/api/events?start=${info.startStr}&end=${info.endStr}`)
-                .then(res => res.json())
-                .then(data => {
-                    allEvents = data;
-                    successCallback(data);
-                })
-                .catch(() => failureCallback());
+            // IL CUORE DEL FIX: Scarichiamo dal server solo se "isDataLoaded" è falso
+            if (!isDataLoaded) {
+                fetch(`/api/events?start=${info.startStr}&end=${info.endStr}`)
+                    .then(res => res.json())
+                    .then(data => {
+                        allEvents = data;
+                        isDataLoaded = true;
+                        populateRegionFilter();
+
+                        // Applica i filtri (se ci sono) prima di stampare
+                        successCallback(filterLocalEvents());
+                    })
+                    .catch(() => failureCallback());
+            } else {
+                // Se i dati sono già stati scaricati, stampiamo solo quelli filtrati all'istante!
+                successCallback(filterLocalEvents());
+            }
         },
 
         dateClick: function () { },
