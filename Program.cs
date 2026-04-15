@@ -27,17 +27,15 @@ app.MapRazorPages();
 // ─────────────────────────────────────────
 
 // GET — legge dal Google Sheet in tempo reale
-app.MapGet("/api/events", async (GoogleSheetsService sheets, string? start, string? end) =>
+// GET — Unisce Google Sheets + Eventi Manuali
+app.MapGet("/api/events", async (GoogleSheetsService sheets) =>
 {
-    var events = await sheets.GetAllEventsAsync();
+    // 1. Prendi eventi da Google
+    var sheetEvents = await sheets.GetAllEventsAsync();
 
-    if (!string.IsNullOrEmpty(start) && DateTime.TryParse(start, out var startDate))
-        events = events.Where(e => DateTime.Parse(e.Start) >= startDate).ToList();
-
-    if (!string.IsNullOrEmpty(end) && DateTime.TryParse(end, out var endDate))
-        events = events.Where(e => DateTime.Parse(e.Start) <= endDate).ToList();
-
-    return Results.Ok(events);
+    // 3. Uniscili e mandala al browser
+    var totalEvents = sheetEvents.ToList();
+    return Results.Ok(totalEvents);
 });
 
 // POST, PUT, DELETE rimangono sull'EventStore per gli eventi manuali

@@ -13,7 +13,7 @@ public class GoogleSheetsService
     public GoogleSheetsService(HttpClient http, IConfiguration config)
     {
         _http = http;
-        _sheetId = "1XOgZtvlO7GTkTSIXtB5mlDw9lslzwWF_rByQVWuIXOM";
+        _sheetId = "1dHEzF9bbvsSFD07b4-XJA9Yw7ViCXu76F3razowZVA8";
     }
 
     private static readonly List<SheetConfig> Sheets = new()
@@ -50,20 +50,21 @@ public class GoogleSheetsService
             try
             {
                 var url = $"https://docs.google.com/spreadsheets/d/{_sheetId}/export?format=csv&gid={config.Gid}";
+                // Cerca questo punto nel metodo GetAllEventsAsync
                 var csv = await _http.GetStringAsync(url);
 
-                // --- INIZIO TEST GREZZO LOMBARDIA ---
-                if (config.Regione == "LOMBARDIA")
+                // --- DEBUG PIEMONTE-LIGURIA ---
+                if (config.Regione == "PIEMONTE-LIGURIA")
                 {
-                    Console.WriteLine("\n=== INIZIO LETTURA REALE LOMBARDIA ===");
-                    var rawLines = csv.Split('\n').Take(6).ToArray(); // Prende le prime 6 righe
+                    Console.WriteLine("\n=== DEBUG SORGENTE PIEMONTE-LIGURIA ===");
+                    var rawLines = csv.Split('\n').Take(10).ToArray(); // Guardiamo le prime 10 righe
                     for (int i = 0; i < rawLines.Length; i++)
                     {
                         Console.WriteLine($"RIGA {i}: {rawLines[i].Trim()}");
                     }
-                    Console.WriteLine("=== FINE LETTURA REALE LOMBARDIA ===\n");
+                    Console.WriteLine("=== FINE DEBUG PIEMONTE ===\n");
                 }
-                // --- FINE TEST ---
+                // ------------------------------
 
                 var events = ParseSheet(csv, config, ref id);
                 allEvents.AddRange(events);
@@ -81,87 +82,75 @@ public class GoogleSheetsService
     {
         var events = new List<CalendarEvent>();
         var lines = csv.Split('\n').Select(l => l.Trim()).ToArray();
-
         string currentMese = "";
+        int currentMeseNum = 0;
 
-        // Partiamo dalla riga 4 (indice 3)
         for (int i = 3; i < lines.Length; i++)
         {
             var cols = ParseCsvLine(lines[i]);
             if (cols.Count <= config.ColGiorno) continue;
 
-            // --- LETTURA MESE E GIORNO ---
-            var meseRaw = cols.Count > config.ColMese ? cols[config.ColMese].Trim() : "";
+            // --- LOGICA MESE ---
+            var meseRaw = cols.Count > config.ColMese ? cols[config.ColMese].Trim().ToUpper() : "";
             if (!string.IsNullOrWhiteSpace(meseRaw))
-                currentMese = meseRaw.ToUpper().Length >= 3 ? meseRaw.ToUpper().Substring(0, 3) : meseRaw.ToUpper();
+            {
+                string meseTesto = new string(meseRaw.Where(char.IsLetter).ToArray());
+                if (meseTesto.Length >= 3)
+                {
+                    string abbreviato = meseTesto.Substring(0, 3);
+                    if (Mesi.TryGetValue(abbreviato, out int mFound))
+                    {
+                        currentMese = abbreviato;
+                        currentMeseNum = mFound;
+                        if (config.Regione == "PIEMONTE-LIGURIA")
+                            Console.WriteLine($"[PIEMONTE] Rilevato mese: {currentMese} alla riga {i}");
+                    }
+                }
+            }
 
-            var giornoRaw = cols[config.ColGiorno].Trim(' ', '"');
+            // --- LOGICA GIORNO ---
+            var giornoRaw = cols[config.ColGiorno].Trim(' ', '"', '\t');
 
-            if (string.IsNullOrWhiteSpace(giornoRaw) || string.IsNullOrWhiteSpace(currentMese))
-                continue;
+            // DEBUG ESTREMO: Se siamo in Piemonte ad Aprile, stampiamo TUTTA la riga
+            if (config.Regione == "PIEMONTE-LIGURIA" && currentMeseNum == 4)
+            {
+                Console.WriteLine($"[DEBUG PIEMONTE APR] Riga {i} | Contenuto Colonna GG: '{giornoRaw}' | Intera riga: {lines[i]}");
+            }
 
-            // --- GESTIONE DATE: ESTRAZIONE NUMERO ---
-            DateTime data = DateTime.MinValue;
+            if (string.IsNullOrWhiteSpace(giornoRaw) || currentMeseNum == 0) continue;
 
-            // Questo trucco magico estrae SOLO I NUMERI dalla scritta (es: da "giovedì 15" tira fuori "15")
             var matchNumero = System.Text.RegularExpressions.Regex.Match(giornoRaw, @"\d+");
-
-            // 1. Caso principale: siamo riusciti a estrarre un numero di giorno
-            if (matchNumero.Success && int.TryParse(matchNumero.Value, out int giorno) && Mesi.TryGetValue(currentMese, out int mese))
+            if (matchNumero.Success && int.TryParse(matchNumero.Value, out int giorno))
             {
-                // Se per caso Google Sheets dovesse sparare un giorno seriale strano (tipo 45672)
-                if (giorno > 30000)
+                try
                 {
-                    data = DateTime.FromOADate(giorno);
+                    var data = new DateTime(2026, currentMeseNum, giorno);
+                    var tipologiaRaw = cols.Count > config.ColTipologia ? cols[config.ColTipologia].Trim() : "";
+                    var descrizione = cols.Count > config.ColDescrizione ? cols[config.ColDescrizione].Trim() : "";
+                    var luogo = cols.Count > config.ColLuogo ? cols[config.ColLuogo].Trim() : "";
+
+                    if (descrizione.Equals("TRUE", StringComparison.OrdinalIgnoreCase)) descrizione = "";
+
+                    var codiceTipologia = tipologiaRaw.Length > 0 ? tipologiaRaw.Substring(0, 1).ToUpper() : "A";
+                    var colore = ColoriTipologia.TryGetValue(codiceTipologia, out var c) ? c : "#A0A0A0";
+                    var nomeTipologia = tipologiaRaw.Contains("-") ? tipologiaRaw.Substring(tipologiaRaw.IndexOf('-') + 1).Trim() : tipologiaRaw;
+
+                    events.Add(new CalendarEvent
+                    {
+                        Id = id++,
+                        Title = string.IsNullOrWhiteSpace(descrizione) ? nomeTipologia : descrizione,
+                        Start = data.ToString("yyyy-MM-dd"),
+                        Color = colore,
+                        Description = nomeTipologia,
+                        Location = luogo,
+                        Tipologia = codiceTipologia,
+                        Regione = config.Regione,
+                        AllDay = true
+                    });
                 }
-                else
-                {
-                    data = new DateTime(2026, mese, giorno);
-                }
+                catch { continue; }
             }
-            // 2. Piano B: forse è già una data intera (es "2026-01-15")
-            else if (DateTime.TryParse(giornoRaw, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime parsedDate))
-            {
-                data = parsedDate;
-            }
-            else
-            {
-                // Riga incomprensibile, saltiamo
-                continue;
-            }
-
-            // --- LETTURA ALTRE COLONNE ---
-            var tipologiaRaw = cols.Count > config.ColTipologia ? cols[config.ColTipologia].Trim() : "";
-            var descrizione = cols.Count > config.ColDescrizione ? cols[config.ColDescrizione].Trim() : "";
-            var luogo = cols.Count > config.ColLuogo ? cols[config.ColLuogo].Trim() : "";
-
-            if (descrizione.Equals("TRUE", StringComparison.OrdinalIgnoreCase) ||
-                descrizione.Equals("FALSE", StringComparison.OrdinalIgnoreCase))
-            {
-                descrizione = "";
-            }
-
-            var codiceTipologia = tipologiaRaw.Length > 0 ? tipologiaRaw.Substring(0, 1).ToUpper() : "A";
-            var colore = ColoriTipologia.TryGetValue(codiceTipologia, out var c) ? c : "#A0A0A0";
-
-            var nomeTipologia = tipologiaRaw.Contains("-")
-                ? tipologiaRaw.Substring(tipologiaRaw.IndexOf('-') + 1).Trim()
-                : tipologiaRaw;
-
-            events.Add(new CalendarEvent
-            {
-                Id = id++,
-                Title = string.IsNullOrWhiteSpace(descrizione) ? nomeTipologia : descrizione,
-                Start = data.ToString("yyyy-MM-dd"),
-                Color = colore,
-                Description = nomeTipologia,
-                Location = luogo,
-                Tipologia = codiceTipologia,
-                Regione = config.Regione,
-                AllDay = true
-            });
         }
-
         return events;
     }
 
