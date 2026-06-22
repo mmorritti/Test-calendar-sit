@@ -74,10 +74,119 @@ app.MapDelete("/api/events/{id}", (int id) =>
 
 app.MapGet("/api/debug", async (GoogleSheetsService sheets) =>
 {
-    var url = $"https://docs.google.com/spreadsheets/d/1XOgZtvlO7GTkTSIXtB5mlDw9lslzwWF_rByQVWuIXOM/export?format=csv&sheet=LOMBARDIA";
+    var url = $"https://docs.google.com/spreadsheets/d/1dHEzF9bbvsSFD07b4-XJA9Yw7ViCXu76F3razowZVA8/export?format=csv&sheet=LOMBARDIA";
     var http = new HttpClient();
     var csv = await http.GetStringAsync(url);
     return Results.Ok(csv);
 });
+
+app.MapGet("/api/eventbrite/preview", async (string url, IHttpClientFactory httpClientFactory) =>
+{
+    if (string.IsNullOrWhiteSpace(url))
+        return Results.BadRequest(new { error = "URL mancante" });
+
+    if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        return Results.BadRequest(new { error = "URL non valido" });
+
+    if (!uri.Host.Contains("eventbrite", StringComparison.OrdinalIgnoreCase))
+        return Results.BadRequest(new { error = "Sono accettati solo link Eventbrite" });
+
+    try
+    {
+        var http = httpClientFactory.CreateClient();
+
+        http.DefaultRequestHeaders.UserAgent.ParseAdd(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
+        );
+
+        var html = await http.GetStringAsync(uri);
+
+        var imageUrl =
+              ExtractMetaContent(html, "og:image")
+              ?? ExtractMetaContent(html, "twitter:image")
+              ?? ExtractMetaContent(html, "twitter:image:src");
+
+        imageUrl = NormalizeEventbriteImageUrl(imageUrl, uri);
+
+        return Results.Ok(new
+        {
+            imageUrl
+        });
+
+        return Results.Ok(new
+        {
+            imageUrl
+        });
+    }
+    catch
+    {
+        return Results.Ok(new
+        {
+            imageUrl = (string?)null
+        });
+    }
+});
+
+static string? ExtractMetaContent(string html, string propertyName)
+{
+    var patternPropertyFirst =
+        $"<meta[^>]+property=[\"']{System.Text.RegularExpressions.Regex.Escape(propertyName)}[\"'][^>]+content=[\"']([^\"']+)[\"']";
+
+    var match = System.Text.RegularExpressions.Regex.Match(
+        html,
+        patternPropertyFirst,
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase
+    );
+
+    if (match.Success)
+        return System.Net.WebUtility.HtmlDecode(match.Groups[1].Value);
+
+    var patternContentFirst =
+        $"<meta[^>]+content=[\"']([^\"']+)[\"'][^>]+property=[\"']{System.Text.RegularExpressions.Regex.Escape(propertyName)}[\"']";
+
+    match = System.Text.RegularExpressions.Regex.Match(
+        html,
+        patternContentFirst,
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase
+    );
+
+    if (match.Success)
+        return System.Net.WebUtility.HtmlDecode(match.Groups[1].Value);
+
+    return null;
+}
+
+static string? NormalizeEventbriteImageUrl(string? imageUrl, Uri eventbriteUri)
+{
+    if (string.IsNullOrWhiteSpace(imageUrl))
+        return null;
+
+    imageUrl = System.Net.WebUtility.HtmlDecode(imageUrl);
+
+    // Caso Eventbrite/Next.js:
+    // /_next/image?url=https%3A%2F%2Fimg.evbuc.com%2F...
+    if (imageUrl.StartsWith("/_next/image", StringComparison.OrdinalIgnoreCase))
+    {
+        var absoluteNextUrl = new Uri(eventbriteUri, imageUrl);
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(absoluteNextUrl.Query);
+
+        if (query.TryGetValue("url", out var realImageUrl))
+        {
+            var decoded = System.Net.WebUtility.UrlDecode(realImageUrl.ToString());
+            return decoded;
+        }
+
+        return absoluteNextUrl.ToString();
+    }
+
+    // Caso URL relativo generico
+    if (imageUrl.StartsWith("/", StringComparison.OrdinalIgnoreCase))
+    {
+        return new Uri(eventbriteUri, imageUrl).ToString();
+    }
+
+    // Caso URL già assoluto
+    return imageUrl;
+}
 
 app.Run();

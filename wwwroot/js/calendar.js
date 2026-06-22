@@ -18,12 +18,65 @@ function openCreateModal(start = '', end = '') {
 
 function showDetailModal(event) {
     currentDetailEvent = event;
-    document.getElementById('detail-title').textContent = event.title;
-    document.getElementById('detail-date').textContent = '📅 ' + formatDate(event.start) + (event.end ? ' → ' + formatDate(event.end) : '');
-    const luogo = event.extendedProps.location;
+
+    const titleEl = document.getElementById('detail-title');
+    const descEl = document.getElementById('detail-desc');
+    const dateEl = document.getElementById('detail-date');
     const locationEl = document.getElementById('detail-location');
-    if (locationEl) locationEl.innerHTML = luogo ? '📍 ' + luogo : '';
-    document.getElementById('detail-desc').textContent = event.extendedProps.description || '(nessuna descrizione)';
+    const eventbriteEl = document.getElementById('detail-eventbrite');
+
+    const imageWrapperEl = document.getElementById('detail-image-wrapper');
+    const imageEl = document.getElementById('detail-image');
+
+    titleEl.textContent = event.extendedProps.description || '';
+
+    descEl.textContent = (event.title || '').toUpperCase();
+    descEl.style.fontWeight = '700';
+    descEl.style.marginBottom = '12px';
+
+    dateEl.textContent =
+        '📅 ' + formatDate(event.start) + (event.end ? ' → ' + formatDate(event.end) : '');
+    dateEl.style.marginBottom = '6px';
+
+    const luogo = event.extendedProps.location;
+
+    if (locationEl) {
+        locationEl.textContent = luogo ? '📍 ' + luogo : '';
+    }
+
+    if (imageWrapperEl && imageEl) {
+        imageWrapperEl.style.display = 'none';
+        imageEl.src = '';
+    }
+
+    const eventbriteLink = event.extendedProps.eventbriteLink;
+
+    if (eventbriteEl) {
+        if (eventbriteLink) {
+            eventbriteEl.innerHTML = `
+                🎟️ <a href="${eventbriteLink}" target="_blank" rel="noopener noreferrer" class="fw-bold">
+                    Info e iscrizioni
+                </a>
+            `;
+        } else {
+            eventbriteEl.innerHTML = '';
+        }
+    }
+
+    if (eventbriteLink && imageWrapperEl && imageEl) {
+        fetch(`/api/eventbrite/preview?url=${encodeURIComponent(eventbriteLink)}`)
+            .then(res => res.ok ? res.json() : null)
+            .then(data => {
+                if (data && data.imageUrl) {
+                    imageEl.src = data.imageUrl;
+                    imageWrapperEl.style.display = 'block';
+                }
+            })
+            .catch(err => {
+                console.error('Errore caricamento immagine Eventbrite:', err);
+            });
+    }
+
     new bootstrap.Modal(document.getElementById('detailModal')).show();
 }
 
@@ -122,7 +175,7 @@ function clearFilters() {
 }
 
 function formatDate(date) {
-    return new Date(date).toLocaleString('it-IT', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return new Date(date).toLocaleString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -132,7 +185,7 @@ document.addEventListener('DOMContentLoaded', function () {
         height: 'calc(100vh - 250px)',
         expandRows: true,
         dayMaxEvents: 2,
-        headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,multiMonthYear' },
+        headerToolbar: { left: 'prev,next today', center: 'title', right: '' },
         initialView: 'dayGridMonth',
         eventContent: function (arg) {
             let divEl = document.createElement('div');

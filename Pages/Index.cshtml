@@ -87,6 +87,90 @@
         font-weight: 700 !important;
     }
 
+    #detailModal .modal-dialog {
+        margin-top: 15rem;
+    }
+
+    /* ── MODALE DETTAGLIO CON IMMAGINE EVENTBRITE ── */
+    #detailModal .modal-dialog {
+        margin-top: 10rem;
+        max-width: 760px;
+    }
+
+    #detail-preview-layout {
+        display: flex;
+        gap: 28px;
+        align-items: flex-start;
+    }
+
+    #detail-image-wrapper {
+        width: 310px;
+        height: 220px;
+        flex-shrink: 0;
+        display: none;
+        overflow: hidden;
+        border-radius: 12px;
+        border: 1px solid #dee2e6;
+        background-color: #f8f9fa;
+    }
+
+    #detail-image {
+        width: 100%;
+        height: 100%;
+        display: block;
+        object-fit: contain;
+        object-position: center;
+    }
+
+    #detail-info-wrapper {
+        flex: 0 0 auto;
+        min-width: 260px;
+        padding-top: 30px;
+    }
+
+    #detail-title {
+        font-size: 1.25rem;
+        line-height: 1.25;
+    }
+
+    #detail-desc {
+        font-size: 1rem;
+        margin-bottom: 18px;
+    }
+
+    #detail-date {
+        margin-bottom: 8px !important;
+    }
+
+    #detail-location {
+        margin-bottom: 18px !important;
+    }
+
+    @@media (max-width: 576px) {
+        #detailModal .modal-dialog
+
+    {
+        margin-top: 2rem;
+        max-width: calc(100% - 1rem);
+    }
+
+    #detail-preview-layout {
+        flex-direction: column;
+        gap: 18px;
+    }
+
+    #detail-image-wrapper {
+        width: 100%;
+        height: auto;
+        aspect-ratio: 16 / 9;
+    }
+
+    #detail-info-wrapper {
+        min-width: 0;
+        padding-top: 0;
+    }
+
+    }
 
 </style>
 
@@ -204,19 +288,50 @@
 <div class="modal fade" id="detailModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
+
+            <!-- HEADER MODALE -->
             <div class="modal-header">
                 <h5 class="modal-title" id="detail-title"></h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p class="text-muted mb-1" id="detail-date"></p>
-                <p class="fw-bold mb-3 text-primary" id="detail-location"></p>
 
-                <p id="detail-desc"></p>
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Chiudi"></button>
             </div>
+
+            <!-- BODY MODALE -->
+            <div class="modal-body">
+                <div id="detail-preview-layout">
+
+                    <!-- IMMAGINE EVENTBRITE A SINISTRA -->
+                    <div id="detail-image-wrapper">
+                        <img id="detail-image"
+                             src=""
+                             alt="Copertina evento"
+                             loading="lazy" />
+                    </div>
+
+                    <!-- INFO EVENTO A DESTRA -->
+                    <div id="detail-info-wrapper">
+
+                        <p id="detail-desc" class="fw-bold mb-3"></p>
+
+                        <p class="text-muted mb-1" id="detail-date"></p>
+
+                        <p class="fw-bold mb-3 text-primary" id="detail-location"></p>
+
+                        <p id="detail-eventbrite" class="mb-0"></p>
+
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- FOOTER MODALE -->
             <div class="modal-footer">
                 <button class="btn btn-secondary" data-bs-dismiss="modal">Chiudi</button>
             </div>
+
         </div>
     </div>
 </div>

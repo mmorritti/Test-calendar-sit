@@ -3,7 +3,16 @@ using System.Globalization;
 
 namespace CalendarDemo.Services;
 
-public record SheetConfig(string Gid, string Regione, int ColMese, int ColGiorno, int ColTipologia, int ColDescrizione, int ColLuogo);
+public record SheetConfig(
+    string Gid,
+    string Regione,
+    int ColMese,
+    int ColGiorno,
+    int ColTipologia,
+    int ColDescrizione,
+    int ColLuogo,
+    int? ColEventbrite = null
+);
 
 public class GoogleSheetsService
 {
@@ -18,12 +27,12 @@ public class GoogleSheetsService
 
     private static readonly List<SheetConfig> Sheets = new()
     {
-        new SheetConfig("0",          "LOMBARDIA",             0, 1, 4, 6, 7),
-        new SheetConfig("32467924",   "PIEMONTE-LIGURIA",      0, 1, 5, 7, 8),
-        new SheetConfig("1719809067", "LAZIO",                 0, 1, 5, 7, 8),
-        new SheetConfig("1166058384", "VENETO-FRIULI",         0, 1, 5, 7, 8),
-        new SheetConfig("380669227",  "EMILIA ROMAGNA-MARCHE", 0, 1, 5, 7, 8),
-        new SheetConfig("838374118",  "TOSCANA-UMBRIA",        0, 1, 5, 7, 8),
+        new SheetConfig("0",          "LOMBARDIA",             0, 1, 4, 6, 7, 18),
+        new SheetConfig("32467924",   "PIEMONTE-LIGURIA",      0, 1, 5, 7, 8, 18),
+        new SheetConfig("1719809067", "LAZIO",                 0, 1, 5, 7, 8, 18 ),
+        new SheetConfig("1166058384", "VENETO-FRIULI",         0, 1, 5, 7, 8, 18),
+        new SheetConfig("380669227",  "EMILIA ROMAGNA-MARCHE", 0, 1, 5, 7, 8, 18),
+        new SheetConfig("838374118",  "TOSCANA-UMBRIA",        0, 1, 5, 7, 8, 18),
     };
 
     private static readonly Dictionary<string, string> ColoriTipologia = new(StringComparer.OrdinalIgnoreCase)
@@ -129,6 +138,9 @@ public class GoogleSheetsService
                     var descrizione = cols.Count > config.ColDescrizione ? cols[config.ColDescrizione].Trim() : "";
                     var luogo = cols.Count > config.ColLuogo ? cols[config.ColLuogo].Trim() : "";
 
+                    var eventbriteLink = config.ColEventbrite.HasValue && cols.Count > config.ColEventbrite.Value 
+                        ? cols[config.ColEventbrite.Value].Trim() : "";
+
                     if (descrizione.Equals("TRUE", StringComparison.OrdinalIgnoreCase)) descrizione = "";
 
                     var codiceTipologia = tipologiaRaw.Length > 0 ? tipologiaRaw.Substring(0, 1).ToUpper() : "A";
@@ -145,6 +157,7 @@ public class GoogleSheetsService
                         Location = luogo,
                         Tipologia = codiceTipologia,
                         Regione = config.Regione,
+                        EventbriteLink = IsValidUrl(eventbriteLink) ? eventbriteLink : null,
                         AllDay = true
                     });
                 }
@@ -169,5 +182,12 @@ public class GoogleSheetsService
 
         result.Add(current);
         return result;
+    }
+
+    private static bool IsValidUrl(string? value)
+    {
+        return !string.IsNullOrWhiteSpace(value)
+            && Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
     }
 }

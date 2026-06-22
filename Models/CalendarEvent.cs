@@ -14,4 +14,6 @@ public class CalendarEvent
     public string? Location { get; set; }
     public string? Tipologia { get; set; }
     public string? Regione { get; set; }
+
+    public string? EventbriteLink { get; set; }
 }
