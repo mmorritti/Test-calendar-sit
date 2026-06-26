@@ -63,6 +63,15 @@ body {
     }
 }
 
+.adventure-title {
+    font-family: 'Mighty Souly', sans-serif;
+    font-size: 2.4rem;
+    line-height: 1.1;
+    color: #2D292D;
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
 /* Tablet */
 @media (max-width: 768px) {
     .fc-toolbar-title {
